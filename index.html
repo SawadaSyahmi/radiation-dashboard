@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Live FS-5000 radiation monitoring dashboard powered by ESP32-S3 and Supabase." />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Radiation Monitoring Dashboard</title>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="img">
+            <circle cx="16" cy="16" r="3.2"></circle>
+            <path d="M16 4.2a11.8 11.8 0 0 1 8.4 3.5l-4.3 4.3A5.9 5.9 0 0 0 16 10.3V4.2Z"></path>
+            <path d="M5.8 21.9A11.8 11.8 0 0 1 5.1 11l5.9 1.6a5.9 5.9 0 0 0 .3 5.7l-5.5 3.6Z"></path>
+            <path d="M26.2 21.9A11.8 11.8 0 0 1 16 27.8v-6.1a5.9 5.9 0 0 0 5.1-2.9l5.1 3.1Z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="eyebrow">FS-5000 • ESP32-S3 • Supabase</div>
+          <h1>Radiation Monitoring Dashboard</h1>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div id="connectionBadge" class="status-badge neutral">
+          <span class="status-dot"></span>
+          <span id="connectionText">Connecting…</span>
+        </div>
+        <button id="refreshButton" class="button secondary" type="button">Refresh</button>
+        <button id="exportButton" class="button primary" type="button">Export CSV</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-grid">
+        <article class="hero-card">
+          <div class="hero-top">
+            <div>
+              <div class="label">Current dose rate</div>
+              <div class="hero-value">
+                <span id="doseRateValue">—</span>
+                <span class="hero-unit">µSv/h</span>
+              </div>
+            </div>
+            <div id="radiationState" class="state-pill neutral">Waiting for data</div>
+          </div>
+
+          <div class="meter-wrap" aria-label="Dose rate display">
+            <div class="meter-track">
+              <div id="meterFill" class="meter-fill"></div>
+              <div id="meterMarker" class="meter-marker"></div>
+            </div>
+            <div class="meter-scale">
+              <span>0</span>
+              <span>0.25</span>
+              <span>0.50</span>
+              <span>0.75</span>
+              <span>1.00+</span>
+            </div>
+          </div>
+
+          <div class="hero-meta">
+            <div>
+              <span>Device</span>
+              <strong id="deviceId">—</strong>
+            </div>
+            <div>
+              <span>Last reading</span>
+              <strong id="lastUpdated">—</strong>
+            </div>
+            <div>
+              <span>Warning flag</span>
+              <strong id="warningFlag">—</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="summary-card">
+          <div class="summary-head">
+            <div>
+              <div class="label">System health</div>
+              <h2 id="healthTitle">Waiting for first reading</h2>
+            </div>
+            <div id="healthIcon" class="health-icon neutral">●</div>
+          </div>
+
+          <div class="health-list">
+            <div class="health-row">
+              <span>Cloud feed</span>
+              <strong id="feedStatus">Checking…</strong>
+            </div>
+            <div class="health-row">
+              <span>Reading age</span>
+              <strong id="readingAge">—</strong>
+            </div>
+            <div class="health-row">
+              <span>Auto refresh</span>
+              <strong><span id="refreshSeconds">5</span>s</strong>
+            </div>
+            <div class="health-row">
+              <span>Samples loaded</span>
+              <strong id="sampleCount">0</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="kpi-grid" aria-label="Radiation KPIs">
+        <article class="kpi-card">
+          <div class="kpi-icon">Σ</div>
+          <div>
+            <div class="label">Accumulated dose</div>
+            <div class="kpi-value"><span id="doseValue">—</span> <small>µSv</small></div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon">CPS</div>
+          <div>
+            <div class="label">Counts per second</div>
+            <div class="kpi-value"><span id="cpsValue">—</span></div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon">CPM</div>
+          <div>
+            <div class="label">Counts per minute</div>
+            <div class="kpi-value"><span id="cpmValue">—</span></div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon">AVG</div>
+          <div>
+            <div class="label">Average dose rate</div>
+            <div class="kpi-value"><span id="averageValue">—</span> <small>µSv/h</small></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel chart-panel">
+          <div class="panel-header">
+            <div>
+              <div class="label">Trend</div>
+              <h2>Dose rate history</h2>
+            </div>
+            <div class="segmented-control" aria-label="History range">
+              <button class="range-button" data-range="30">30</button>
+              <button class="range-button active" data-range="60">60</button>
+              <button class="range-button" data-range="100">100</button>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <canvas id="doseChart"></canvas>
+          </div>
+
+          <div class="chart-footer">
+            <span>Latest <strong id="chartLatest">—</strong> µSv/h</span>
+            <span>Peak <strong id="chartPeak">—</strong> µSv/h</span>
+            <span>Mean <strong id="chartMean">—</strong> µSv/h</span>
+          </div>
+        </article>
+
+        <article class="panel activity-panel">
+          <div class="panel-header">
+            <div>
+              <div class="label">Activity</div>
+              <h2>Detector statistics</h2>
+            </div>
+          </div>
+
+          <div class="stat-stack">
+            <div class="stat-row">
+              <span>Detector time</span>
+              <strong id="detectorTime">—</strong>
+            </div>
+            <div class="stat-row">
+              <span>Detector S</span>
+              <strong id="detectorS">—</strong>
+            </div>
+            <div class="stat-row">
+              <span>Current CPS</span>
+              <strong id="activityCps">—</strong>
+            </div>
+            <div class="stat-row">
+              <span>Current CPM</span>
+              <strong id="activityCpm">—</strong>
+            </div>
+            <div class="stat-row">
+              <span>Peak dose rate</span>
+              <strong><span id="peakDose">—</span> µSv/h</strong>
+            </div>
+          </div>
+
+          <div class="notice">
+            <strong>Display note</strong>
+            <p>Dashboard status labels are configurable visualization bands, not regulatory or medical safety guidance.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="panel-header">
+          <div>
+            <div class="label">Live records</div>
+            <h2>Recent readings</h2>
+          </div>
+          <span id="tableUpdated" class="muted">—</span>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Dose rate</th>
+                <th>Dose</th>
+                <th>CPS</th>
+                <th>CPM</th>
+                <th>Average</th>
+                <th>Warning</th>
+              </tr>
+            </thead>
+            <tbody id="readingsBody">
+              <tr>
+                <td colspan="8" class="empty-cell">Waiting for Supabase data…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="errorPanel" class="error-panel hidden" role="alert">
+        <strong>Unable to load Supabase data.</strong>
+        <span id="errorMessage"></span>
+      </section>
+    </main>
+
+    <footer>
+      <div>Radiation Monitoring Dashboard</div>
+      <div>Live data from FS-5000 via ESP32-S3</div>
+    </footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
